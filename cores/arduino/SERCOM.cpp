@@ -112,11 +112,10 @@ void SERCOM::enableUART()
 void SERCOM::flushUART()
 {
   // Skip checking transmission completion if data register is empty
-//   if(isDataRegisterEmptyUART())
-//     return;
+  // Wait for transmission to complete, if ok to do so.
+  while(!sercom->USART.INTFLAG.bit.TXC && onFlushWaitUartTXC);
 
-  // Wait for transmission to complete
-  while(!sercom->USART.INTFLAG.bit.TXC);
+  onFlushWaitUartTXC = false;
 }
 
 void SERCOM::clearStatusUART()
@@ -183,6 +182,10 @@ int SERCOM::writeDataUART(uint8_t data)
 
   //Put data into DATA register
   sercom->USART.DATA.reg = (uint16_t)data;
+
+  // indicate it's ok to wait for TXC flag when flushing
+  onFlushWaitUartTXC = true;
+
   return 1;
 }
 
@@ -443,11 +446,12 @@ void SERCOM::initMasterWIRE( uint32_t baudrate )
 {
   // Initialize the peripheral clock and interruption
   initClockNVIC() ;
+  initSlowClock();
 
   resetWIRE() ;
 
   // Set master mode and enable SCL Clock Stretch mode (stretch after ACK bit)
-  sercom->I2CM.CTRLA.reg =  SERCOM_I2CM_CTRLA_MODE( I2C_MASTER_OPERATION )/* |
+  sercom->I2CM.CTRLA.reg =  SERCOM_I2CM_CTRLA_MODE( I2C_MASTER_OPERATION ) | SERCOM_I2CM_CTRLA_LOWTOUTEN/* |
                             SERCOM_I2CM_CTRLA_SCLSM*/ ;
 
   // Enable Smart mode and Quick Command
@@ -507,7 +511,7 @@ bool SERCOM::startTransmissionWIRE(uint8_t address, SercomWireReadWriteFlag flag
   // possible bus states.
   if(!isBusOwnerWIRE())
   {
-    if( isBusBusyWIRE() || (isArbLostWIRE() && !isBusIdleWIRE()) )
+    if( isBusBusyWIRE() || (isArbLostWIRE() && !isBusIdleWIRE()) || isBusUnknownWIRE())
     {
       return false;
     }
@@ -568,8 +572,8 @@ bool SERCOM::sendDataMasterWIRE(uint8_t data)
   while(!sercom->I2CM.INTFLAG.bit.MB) {
 
     // If a bus error occurs, the MB bit may never be set.
-    // Check the bus error bit and bail if it's set.
-    if (sercom->I2CM.STATUS.bit.BUSERR) {
+    // Check the bus error bit and ARBLOST bit and bail if either is set.
+    if (sercom->I2CM.STATUS.bit.BUSERR || sercom->I2CM.STATUS.bit.ARBLOST || sercom->I2CM.STATUS.bit.LOWTOUT) {
       return false;
     }
   }
@@ -611,6 +615,11 @@ bool SERCOM::isBusIdleWIRE( void )
 bool SERCOM::isBusOwnerWIRE( void )
 {
   return sercom->I2CM.STATUS.bit.BUSSTATE == WIRE_OWNER_STATE;
+}
+
+bool SERCOM::isBusUnknownWIRE( void )
+{
+  return sercom->I2CM.STATUS.bit.BUSSTATE == WIRE_UNKNOWN_STATE;
 }
 
 bool SERCOM::isArbLostWIRE( void )
@@ -678,6 +687,14 @@ uint8_t SERCOM::readDataWIRE( void )
   }
 }
 
+void SERCOM::initSlowClock( void ) {
+  //GCLK1 is configured to 32k in startup.c as source for DFLL48M cpu clock
+  GCLK->CLKCTRL.reg = GCLK_CLKCTRL_ID( GCM_SERCOMx_SLOW ) |
+                      GCLK_CLKCTRL_GEN_GCLK1 |
+                      GCLK_CLKCTRL_CLKEN ;
+
+  while ( GCLK->STATUS.reg & GCLK_STATUS_SYNCBUSY );
+}
 
 void SERCOM::initClockNVIC( void )
 {

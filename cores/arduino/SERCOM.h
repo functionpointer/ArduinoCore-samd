@@ -202,6 +202,7 @@ class SERCOM
 		bool isSlaveWIRE( void ) ;
 		bool isBusIdleWIRE( void ) ;
 		bool isBusOwnerWIRE( void ) ;
+		bool isBusUnknownWIRE( void ) ;
 		bool isArbLostWIRE( void );
 		bool isBusBusyWIRE( void );
 		bool isDataReadyWIRE( void ) ;
@@ -217,7 +218,13 @@ class SERCOM
 		Sercom* sercom;
 		uint8_t calculateBaudrateSynchronous(uint32_t baudrate) ;
 		uint32_t division(uint32_t dividend, uint32_t divisor) ;
+		void initSlowClock( void );
 		void initClockNVIC( void ) ;
+
+		// Flag set when data is loaded into sercom->USART.DATA.reg.
+		// Helps with preventing UART lockups when flushing on startup
+		// and the asyncronous nature of the DRE and TXC interrupt flags.
+		bool onFlushWaitUartTXC = false;
 };
 
 #endif
