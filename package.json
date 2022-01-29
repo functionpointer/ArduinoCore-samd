@@ -1,6 +1,6 @@
 {
   "name": "framework-arduino-samd",
-  "version": "1.8.11",
+  "version": "1.8.12",
   "description": "The official Arduino Wiring-based Framework for Microchip SAM D microcontrollers",
   "keywords": [
     "framework",
